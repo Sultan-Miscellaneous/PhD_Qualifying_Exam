@@ -1,3 +1,4 @@
 {
-    "python.pythonPath": "/home/sultan/anaconda3/envs/QE/bin/python"
+    "python.pythonPath": "/home/sultan/anaconda3/envs/QE/bin/python",
+    "jupyter.jupyterServerType": "local"
 }

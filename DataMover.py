@@ -17,11 +17,16 @@ def datamover(clk, enable, data, port, program, mode = 'read'):
             for (domain, access_map, condition) in program:
                 for iteration_vector in domain:
                     if condition(iteration_vector):
-                        access_idx = apply_access(iteration_vector, access_map)
-                        if mode == 'read':
-                            data.next = port(access_idx)
+                        if mode == 'read' or mode == 'write':
+                            access_idx = apply_access(iteration_vector, access_map)
+                            if mode == 'read':
+                                data.next = port(access_idx)
+                            elif mode == 'write':
+                                port(access_idx, data.val)
+                        elif mode == 'filter':
+                            data.next = port.val
                         else:
-                            port(access_idx, data.val)
+                            raise Exception("Invalid Datamover mode specified")
                         
     
     return access_mem

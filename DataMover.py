@@ -1,8 +1,12 @@
 # %%
+from itertools import cycle
 from myhdl import block, always
 
+
 @block
-def datamover(clk, enable, data, port, program, mode = 'read'):
+def datamover(clk, enable, data, port, program, cycle_program = False, repeat = 1, mode = 'read'):
+    
+    program = cycle(program) if cycle_program else program * repeat
     
     def apply_access(iteration_vector, access_map):
         access_idx = 0
@@ -12,7 +16,7 @@ def datamover(clk, enable, data, port, program, mode = 'read'):
         return access_idx
  
     @always(clk.posedge)
-    def access_mem():
+    def compute():
         if enable:
             for (domain, access_map, condition) in program:
                 for iteration_vector in domain:
@@ -29,4 +33,4 @@ def datamover(clk, enable, data, port, program, mode = 'read'):
                             raise Exception("Invalid Datamover mode specified")
                         
     
-    return access_mem
+    return compute

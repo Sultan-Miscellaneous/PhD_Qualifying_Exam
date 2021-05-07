@@ -51,6 +51,9 @@ class Memory:
     
     def compute_energy_cost(self):
         return self.request_count*self.access_cost
+    
+    def fake_access(self, count):
+        self.request_count += count
 
 
 @block
@@ -130,13 +133,25 @@ def datamover(clk, enable, data, port, program, mode = 'read'):
     return access_mem
  
 @block
-def pe(clk, enable, pad_origin, pads, weights, ifmap_in, ofmap_out):
+def pe(clk, weights_load, memory, enable, pad_origin, pads, all_weights, ifmap_in, ofmap_out):
 
+    current_weight_index = 0
+    weights = all_weights[0]
     pad_completion_counter = Counter()
+
+    @instance
+    def load_new_weights():
+        while True:
+            yield weights_load
+            pad_completion_counter.clear()
+            current_weight_index += 1
+            weights = all_weights[current_weight_index]
+            memory.fake_access(9)
+            yield delay(9)
 
     @always(clk.posedge)
     def compute():
-        if enable:
+        if enable and not weights_load:
             output_added = False
             for assosciated_pads in pad_origin[ifmap_in.val]:
                 pad_idx = assosciated_pads['pad_idx']
@@ -148,7 +163,7 @@ def pe(clk, enable, pad_origin, pads, weights, ifmap_in, ofmap_out):
             if not output_added:
                 ofmap_out.next = 0
 
-    return compute
+    return compute, load_new_weights
 
 @block
 def pe_tb():

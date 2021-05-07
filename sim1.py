@@ -72,15 +72,21 @@ for k, i, j in product(range(channels), range(ifmap_M), range(ifmap_N)):
         if pad_completion_counter[pad_idx] == 9:
             output.append(np.einsum('ij,ij', pads[pad_idx], weights.squeeze()))
             output_added = True
-    if not output_added:
+    if i>0 and not output_added:
         output.append(0)
             
-output.extend([0]*224)
+# %%
+output = [i for i in output if i > 0]     
+
+# output.extend([0]*225)
 
 # %%
-output = np.array(output).reshape(1,224,224)
+output = np.array(output[1:]).reshape(1,224,224)
 
+# %%
+import pickle
+with open("pe_golden", "wb") as file:
+    pickle.dump(output, file) 
 # %%
 output
-
-# %%
+ # %%

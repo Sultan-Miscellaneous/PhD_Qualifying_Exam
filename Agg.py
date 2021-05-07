@@ -1,3 +1,4 @@
+# %%
 from myhdl import block, Signal, delay, always, instance
 from tqdm.contrib.itertools import product
 

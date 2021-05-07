@@ -1,10 +1,54 @@
 import numpy as np
 from myhdl import block, Signal, delay, always, instance, traceSignals
+from numpy.core.fromnumeric import prod
 from numpy.lib.stride_tricks import sliding_window_view
-from itertools import product as vanilla_product
+from itertools import product as quite_product
 from tqdm.contrib.itertools import product
 from collections import Counter
 import pickle
+from Memory import *
+
+weights_M  = 3
+weights_N  = 3
+ifmap_M = 224
+ifmap_N = 224
+channels = 1
+
+def load_data():
+    ifmap = np.arange(channels*ifmap_M*ifmap_N).reshape(channels,ifmap_M,ifmap_N)
+    weights = np.arange(channels*weights_M*weights_N).reshape(channels,weights_M,weights_N)
+    pads = sliding_window_view(ifmap,window_shape=[1,3,3]).squeeze()
+
+    pad_origin = {}
+    for p_k, p_i, p_j in product(range(pads.shape[0]), range(pads.shape[1]), range(pads.shape[2])):
+        for w_i, w_j in quite_product(range(pads.shape[3]), range(pads.shape[4])):
+            cur_ifmap = pads[p_k, p_i, p_j, w_i, w_j]
+            origin = {"pad_idx": (p_k, p_i, p_j), "weight_idx": (w_i, w_j)}
+            if cur_ifmap not in pad_origin.keys():
+                pad_origin[cur_ifmap] = [origin]
+            else:
+                pad_origin[cur_ifmap].append(origin)
+
+    output = []
+    for k in quite_product(range(channels)):
+        pad_completion_counter = Counter()
+        for i, j in product(range(ifmap_M), range(ifmap_N)):
+            output_added = False
+            for assosciated_pads in pad_origin[ifmap[k][i][j]]:
+                pad_idx = assosciated_pads['pad_idx']
+                pad_completion_counter[pad_idx] += 1
+                if pad_completion_counter[pad_idx] == 9:
+                    output.append(np.einsum('ij,ij', pads[pad_idx], weights[k]))
+                    output_added = True
+            if i>0 and not output_added:
+                output.append(0)
+                    
+        output.extend([0]*224)
+
+    output.extend([0])
+    output = np.array(output[1:]).reshape(channels,ifmap_M,ifmap_N)
+    
+    return ifmap, weights, pads, pad_origin, output
 
 @block
 def pe(clk, weights_load, memory, enable, pad_origin, pads, all_weights, ifmap_in, ofmap_out):
@@ -42,36 +86,13 @@ def pe(clk, weights_load, memory, enable, pad_origin, pads, all_weights, ifmap_i
 @block
 def pe_tb():
 
-    weights_M = 3
-    weights_N = 3
-    ifmap_M = 224
-    ifmap_N = 224
-    channels = 1
-
     clk = Signal(0)
     enable = Signal(0)
     stop_sim = Signal(0)
     ifmap_in = Signal(0)
     ofmap_out = Signal(0)
 
-    def load_ifmap():
-        ifmap = np.arange(channels*ifmap_M *
-                          ifmap_N).reshape(channels, ifmap_M, ifmap_N)
-        pads = sliding_window_view(ifmap, window_shape=[1, 3, 3]).squeeze()
-        pad_origin = {}
-        for p_i, p_j in product(range(pads.shape[0]), range(pads.shape[1]), desc="Loading ifmap"):
-            for w_i, w_j in vanilla_product(range(pads.shape[2]), range(pads.shape[3])):
-                cur_ifmap = pads[p_i, p_j, w_i, w_j]
-                origin = {"pad_idx": (p_i, p_j), "weight_idx": (w_i, w_j)}
-                if cur_ifmap not in pad_origin.keys():
-                    pad_origin[cur_ifmap] = [origin]
-                else:
-                    pad_origin[cur_ifmap].append(origin)
-        return ifmap, pads, pad_origin
-
-    ifmap, pads, pad_origin = load_ifmap()
-    weights = np.arange(channels*weights_M *
-                        weights_N).reshape(channels, weights_M, weights_N)
+    ifmap, weights, pads, pad_origin, output = load_data()
 
     @instance
     def clk_driver():
@@ -87,10 +108,11 @@ def pe_tb():
         enable.next = True
         stop_sim.next = False
         yield clk.posedge
-        for k, i, j in product(range(channels), range(ifmap_M), range(ifmap_N), desc="Pushing ifmap"):
-            ifmap_in.next = ifmap[k][i][j].item()
-            yield clk.posedge
-        yield clk.posedge  # for last input
+        for k in product(range(channels)):
+            for i, j in product(range(ifmap_M), range(ifmap_N), desc="Pushing ifmap"):
+                ifmap_in.next = ifmap[k][i][j].item()
+                yield clk.posedge
+            yield clk.posedge  # for last input
         enable.next = False
         stop_sim.next = True
 

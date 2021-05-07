@@ -1,10 +1,10 @@
 # %%
 from itertools import cycle
-from myhdl import block, always
+from myhdl import block, instance, delay, Signal
 
 
 @block
-def datamover(clk, enable, data, port, program, cycle_program = False, repeat = 1, mode = 'read'):
+def datamover(clk : Signal, enable, data, port, program, startup_delay = None, cycle_program = False, repeat = 1, mode = 'read'):
     
     program = cycle(program) if cycle_program else program * repeat
     
@@ -15,9 +15,11 @@ def datamover(clk, enable, data, port, program, cycle_program = False, repeat = 
         access_idx += access_map[-1]
         return access_idx
  
-    @always(clk.posedge)
+    @instance
     def compute():
         if enable:
+            if startup_delay is not None:
+                yield delay(startup_delay)
             for (domain, access_map, condition) in program:
                 for iteration_vector in domain:
                     if condition(iteration_vector):
@@ -31,6 +33,7 @@ def datamover(clk, enable, data, port, program, cycle_program = False, repeat = 
                             data.next = port.val
                         else:
                             raise Exception("Invalid Datamover mode specified")
+                    yield clk.posedge
                         
     
     return compute

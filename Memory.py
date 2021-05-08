@@ -16,7 +16,7 @@ class Memory:
         
     def initialize(self, vals):
         for idx, val in enumerate(vals):
-            self.storage[idx] = vals
+            self.storage[idx] = val
 
     def get_write_port(self):
         if self.available_write_ports > 0:

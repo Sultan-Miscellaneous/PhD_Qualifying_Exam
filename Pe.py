@@ -1,98 +1,109 @@
+# %%
 import numpy as np
-from myhdl import block, Signal, delay, always, instance, traceSignals
 from numpy.core.fromnumeric import prod
 from numpy.lib.stride_tricks import sliding_window_view
 from itertools import product as quite_product
+import torch
 from tqdm.contrib.itertools import product
 from collections import Counter
 import pickle
+import torch.nn as nn
+import torch.nn.functional as F
+import numpy as np
+
+from myhdl import block, Signal, delay, always, instance, traceSignals, enum, now
 from Memory import *
+from Maps import *
 
-weights_M  = 3
-weights_N  = 3
-ifmap_M = 224
-ifmap_N = 224
-channels = 1
-
-def load_data():
-    ifmap = np.arange(channels*ifmap_M*ifmap_N).reshape(channels,ifmap_M,ifmap_N)
-    weights = np.arange(channels*weights_M*weights_N).reshape(channels,weights_M,weights_N)
-    pads = sliding_window_view(ifmap,window_shape=[1,3,3]).squeeze()
-
-    pad_origin = {}
-    for p_k, p_i, p_j in product(range(pads.shape[0]), range(pads.shape[1]), range(pads.shape[2])):
-        for w_i, w_j in quite_product(range(pads.shape[3]), range(pads.shape[4])):
-            cur_ifmap = pads[p_k, p_i, p_j, w_i, w_j]
-            origin = {"pad_idx": (p_k, p_i, p_j), "weight_idx": (w_i, w_j)}
-            if cur_ifmap not in pad_origin.keys():
-                pad_origin[cur_ifmap] = [origin]
-            else:
-                pad_origin[cur_ifmap].append(origin)
-
-    output = []
-    for k in quite_product(range(channels)):
-        pad_completion_counter = Counter()
-        for i, j in product(range(ifmap_M), range(ifmap_N)):
-            output_added = False
-            for assosciated_pads in pad_origin[ifmap[k][i][j]]:
-                pad_idx = assosciated_pads['pad_idx']
-                pad_completion_counter[pad_idx] += 1
-                if pad_completion_counter[pad_idx] == 9:
-                    output.append(np.einsum('ij,ij', pads[pad_idx], weights[k]))
-                    output_added = True
-            if i>0 and not output_added:
-                output.append(0)
-                    
-        output.extend([0]*224)
-
-    output.extend([0])
-    output = np.array(output[1:]).reshape(channels,ifmap_M,ifmap_N)
-    
-    return ifmap, weights, pads, pad_origin, output
+def clk_delay(val):
+    return delay(val*2)
 
 @block
-def pe(clk, weights_load, memory, enable, pad_origin, pads, all_weights, ifmap_in, ofmap_out):
+def pe(clk, memory, enable, ifmaps, weights, ifmap_in, ofmap_out):
 
-    current_weight_index = 0
-    weights = all_weights[0]
-    pad_completion_counter = Counter()
+    states = enum('LOAD', 'IDLE', 'COMPUTE')
+    
+    current_state = Signal(states.LOAD)
+    input_counter = Signal(0)
+    current_fmap_index = Signal(0)
+    output_counter = Signal(0)
+    
+    def precompute_ofmaps(ifmaps, weights):
+        ofmaps = []
+        for ifmap, weight in zip(ifmaps, weights):
+            ifmap = torch.tensor(ifmap).unsqueeze(0).unsqueeze(0)
+            weight = torch.tensor(weight).unsqueeze(0).unsqueeze(0)
+            ofmap = F.pad(F.conv2d(ifmap, weight), (1,1,1,1)).squeeze().numpy()
+            ofmaps.append(ofmap)
+        return ofmaps
+    
+    
+    ofmaps = precompute_ofmaps(ifmaps, weights)      
 
     @instance
-    def load_new_weights():
+    def validate_input():
         while True:
-            yield weights_load
-            pad_completion_counter.clear()
-            current_weight_index += 1
-            weights = all_weights[current_weight_index]
-            memory.fake_access(9)
-            yield delay(9)
+            if enable:
+                if current_state.val == states.LOAD:
+                    input_counter.next = 0
+                elif current_state.val == states.IDLE or current_state.val == states.COMPUTE:
+                    if ifmap_in.val != ifmaps[current_fmap_index.val].flatten()[input_counter.val]:
+                        raise Exception("Invalid ifmap input recieved... aborting...")
+                    input_counter.next = input_counter.val + 1
+            
+            yield clk.posedge
+    
+    @instance
+    def compute_output():
+        nonlocal current_state
+        current_fmap_index.next = 0
+        while True:
+            if enable:
+                if current_state.val == states.LOAD:
+                    memory.fake_access(9)
+                    for _ in range(9):
+                        yield clk.posedge
+                    current_state.next = states.IDLE
+                    yield clk.posedge
+                    
+                elif current_state.val == states.IDLE:
+                    for _ in range(224):
+                        yield clk.posedge
+                    current_state.next = states.COMPUTE
+                    output_counter.next = 0
+                    yield clk.posedge
+                        
+                elif current_state.val == states.COMPUTE:
+                    ofmap_out.next = ofmaps[current_fmap_index].flatten()[output_counter.val].item()
+                    output_counter.next = output_counter.val + 1
+                    if output_counter.val == ((224*224)-1):
+                        yield clk.posedge # clock out last output
+                        current_state.next = states.LOAD
+                        current_fmap_index.next = current_fmap_index.val + 1
+                        output_counter.next = 0
+                    yield clk.posedge
+            else:
+                yield clk.posedge
+            
+            
+    return compute_output, validate_input
 
-    @always(clk.posedge)
-    def compute():
-        if enable and not weights_load:
-            output_added = False
-            for assosciated_pads in pad_origin[ifmap_in.val]:
-                pad_idx = assosciated_pads['pad_idx']
-                pad_completion_counter[pad_idx] += 1
-                if pad_completion_counter[pad_idx] == 9:
-                    ofmap_out.next = np.einsum(
-                        'ij,ij', pads[pad_idx], weights.squeeze()).item()
-                    output_added = True
-            if not output_added:
-                ofmap_out.next = 0
-
-    return compute, load_new_weights
 
 @block
 def pe_tb():
 
-    clk = Signal(0)
+    clk = Signal(True)
     enable = Signal(0)
     stop_sim = Signal(0)
     ifmap_in = Signal(0)
     ofmap_out = Signal(0)
+    
+    memory = Memory(2, 2, 200)
 
-    ifmap, weights, pads, pad_origin, output = load_data()
+    ifmaps, l0, l1, weights_0, weights_1 = get_network_maps()
+    pe_ifmaps = [ifmaps[0], ifmaps[0], ifmaps[0]]
+    pe_weights = [weights_0[0][0], weights_0[0][0], weights_0[0][0]]
+    dut = pe(clk, memory, enable, pe_ifmaps, pe_weights, ifmap_in, ofmap_out)
 
     @instance
     def clk_driver():
@@ -105,41 +116,28 @@ def pe_tb():
 
     @instance
     def stimulus():
+        yield clk.posedge
+        ifmap_in.next = -1
         enable.next = True
         stop_sim.next = False
         yield clk.posedge
-        for k in product(range(channels)):
-            for i, j in product(range(ifmap_M), range(ifmap_N), desc="Pushing ifmap"):
-                ifmap_in.next = ifmap[k][i][j].item()
+        for ifmap in pe_ifmaps:
+            for _ in range(9):
                 yield clk.posedge
-            yield clk.posedge  # for last input
+            for val in ifmap.flatten():
+                ifmap_in.next = val.item()
+                yield clk.posedge
+            yield clk.posedge # clk out last input
+            for _ in range(226): # 2 cycle 
+                yield clk.posedge
         enable.next = False
         stop_sim.next = True
 
-    @instance
-    def monitor():
-        rcvd_output = []
-        with open("./pe_golden", 'rb') as golden_file:
-            expected_output = pickle.load(golden_file)
-        while(True):
-            yield ofmap_out
-            if enable:
-                rcvd_output.append(ofmap_out.val)
-            if stop_sim:
-                break
-        rcvd_output = [val for val in rcvd_output if val > 0]
-        print("\n")
-        if rcvd_output == expected_output:
-            print("Testbench pass")
-        else:
-            print("Testbench fail")
-
-    dut = pe(clk, enable, pad_origin, pads, weights, ifmap_in, ofmap_out)
-
-    return clk_driver, stimulus, monitor, dut
+    return clk_driver, stimulus, dut
 
 
 if __name__ == '__main__':
     print("Running PE testbench")
     inst = pe_tb()
+    inst = traceSignals(inst)
     inst.run_sim()

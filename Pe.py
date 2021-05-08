@@ -47,9 +47,10 @@ def pe(clk, memory, enable, ifmaps, weights, ifmap_in, ofmap_out):
                 if current_state.val == states.LOAD:
                     input_counter.next = 0
                 elif current_state.val == states.IDLE or current_state.val == states.COMPUTE:
-                    if ifmap_in.val != ifmaps[current_fmap_index.val].flatten()[input_counter.val]:
-                        raise Exception("Invalid ifmap input recieved... aborting...")
-                    input_counter.next = input_counter.val + 1
+                    if input_counter.val < ifmaps[current_fmap_index.val].flatten().shape[0]:
+                        if ifmap_in.val != ifmaps[current_fmap_index.val].flatten()[input_counter.val]:
+                            raise Exception("Invalid ifmap input recieved... aborting...")
+                        input_counter.next = input_counter.val + 1
             
             yield clk.posedge
     
@@ -101,8 +102,8 @@ def pe_tb():
     memory = Memory(2, 2, 200)
 
     ifmaps, l0, l1, weights_0, weights_1 = get_network_maps()
-    pe_ifmaps = [ifmaps[0], ifmaps[0], ifmaps[0]]
-    pe_weights = [weights_0[0][0], weights_0[0][0], weights_0[0][0]]
+    pe_ifmaps = [ifmaps[0], ifmaps[1], ifmaps[2]]
+    pe_weights = [weights_0[0][0], weights_0[0][1], weights_0[0][2]]
     dut = pe(clk, memory, enable, pe_ifmaps, pe_weights, ifmap_in, ofmap_out)
 
     @instance

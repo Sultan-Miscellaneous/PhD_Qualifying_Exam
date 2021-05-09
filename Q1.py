@@ -28,10 +28,10 @@ total_ifmaps_size = np.array(pe_ifmaps).flatten().shape[0]
 total_ofmaps_size = total_ifmaps_size
 pe_weights = [weights_0[0][0], weights_0[0][1], weights_0[0][2]]
 
-memory = Memory(1, 1, 200, initialization_vals=all_ifmaps.tolist(), size=total_ifmaps_size+total_ofmaps_size)
+memory = Memory(2, 1, 200, initialization_vals=all_ifmaps.tolist(), size=total_ifmaps_size+single_ofmap_size)
 
 @block 
-def q1_processor(clk, enable, stop_sim, mm2s_done, s2mm_done):
+def q1_processor(clk, enable, mm2s_done, s2mm_done):
     
     ifmap_in = Signal(0)
     ofmap_out = Signal(0)
@@ -48,7 +48,21 @@ def q1_processor(clk, enable, stop_sim, mm2s_done, s2mm_done):
         (range(9), lambda i: 0, lambda i: False),
         (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
         (range(227), lambda i: 0, lambda i: False)
-    ], mm2s_done)
+    ], mm2s_done, mode = 'read')
+    
+    agg_loader = datamover("agg_loader", clk, enable, psums, memory.get_read_port(), [
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True)
+    ], s2mm_done, mode = 'read')
     
     s2mm = datamover("s2mm", clk, enable, agg_output, memory.get_write_port(), [
         (range(1), lambda i: 0, lambda i: False), # agg delay
@@ -59,17 +73,17 @@ def q1_processor(clk, enable, stop_sim, mm2s_done, s2mm_done):
         (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
-        (range(single_ofmap_size), lambda i: i+total_ifmaps_size+single_ofmap_size, lambda i: True),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
         (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
-        (range(single_ofmap_size), lambda i: i+total_ifmaps_size+(single_ofmap_size*2), lambda i: True)
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True)
     ], s2mm_done, mode = 'write')
     
     conv_3_3 = pe(clk, memory, enable, pe_ifmaps, pe_weights, ifmap_in, ofmap_out)
     agg_0 = agg(clk, enable, psums, ofmap_out, agg_output)
     
-    return mm2s, conv_3_3, s2mm, agg_0
+    return mm2s, conv_3_3, s2mm, agg_0, agg_loader
 
 @block
 def q1_processor_tb():
@@ -80,7 +94,7 @@ def q1_processor_tb():
     
     mm2s_done = Signal(0)
     s2mm_done = Signal(0)
-    q1 = q1_processor(clk, enable, stop_sim, mm2s_done, s2mm_done)
+    q1 = q1_processor(clk, enable, mm2s_done, s2mm_done)
     
     @instance
     def clk_driver():

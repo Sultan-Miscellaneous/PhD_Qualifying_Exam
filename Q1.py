@@ -1,6 +1,6 @@
 # %%
 import numpy as np
-from numpy.core.fromnumeric import prod
+from numpy.core.fromnumeric import prod, repeat
 from numpy.lib.stride_tricks import sliding_window_view
 from itertools import product as quite_product
 import torch
@@ -14,98 +14,74 @@ import numpy as np
 from myhdl import block, Signal, delay, always, instance, traceSignals, enum, now
 from Memory import *
 from Maps import *
+from DataMover import *
+from Pe import *
+from Agg import *
 
-def clk_delay(val):
-    return delay(val*2)
+ifmaps, l0, l1, weights_0, weights_1 = get_network_maps()
+pe_ifmaps = [ifmaps[0], ifmaps[1], ifmaps[2]]
+
+single_ifmap_size = ifmaps[0].flatten().shape[0]
+single_ofmap_size = single_ifmap_size
+all_ifmaps = np.array(pe_ifmaps).flatten()
+total_ifmaps_size = np.array(pe_ifmaps).flatten().shape[0]
+total_ofmaps_size = total_ifmaps_size
+pe_weights = [weights_0[0][0], weights_0[0][1], weights_0[0][2]]
+
+memory = Memory(1, 1, 200, initialization_vals=all_ifmaps.tolist(), size=total_ifmaps_size+total_ofmaps_size)
+
+@block 
+def q1_processor(clk, enable, stop_sim, mm2s_done, s2mm_done):
+    
+    ifmap_in = Signal(0)
+    ofmap_out = Signal(0)
+    psums = Signal(0)
+    agg_output = Signal(0)
+    
+    mm2s = datamover("mm2s", clk, enable, ifmap_in, memory.get_read_port(), [
+        (range(9), lambda i: 0, lambda i: False),
+        (range(single_ifmap_size), lambda i: i, lambda i: True),
+        (range(227), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(single_ifmap_size), lambda i: i+single_ifmap_size, lambda i: True),
+        (range(227), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
+        (range(227), lambda i: 0, lambda i: False)
+    ], mm2s_done)
+    
+    s2mm = datamover("s2mm", clk, enable, agg_output, memory.get_write_port(), [
+        (range(1), lambda i: 0, lambda i: False), # agg delay
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size+single_ofmap_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size+(single_ofmap_size*2), lambda i: True)
+    ], s2mm_done, mode = 'write')
+    
+    conv_3_3 = pe(clk, memory, enable, pe_ifmaps, pe_weights, ifmap_in, ofmap_out)
+    agg_0 = agg(clk, enable, psums, ofmap_out, agg_output)
+    
+    return mm2s, conv_3_3, s2mm, agg_0
 
 @block
-def pe(clk, memory, enable, ifmaps, weights, ifmap_in, ofmap_out):
-
-    states = enum('LOAD', 'IDLE', 'COMPUTE')
-    
-    current_state = Signal(states.LOAD)
-    input_counter = Signal(0)
-    current_fmap_index = Signal(0)
-    output_counter = Signal(0)
-    
-    def precompute_ofmaps(ifmaps, weights):
-        ofmaps = []
-        for ifmap, weight in zip(ifmaps, weights):
-            ifmap = torch.tensor(ifmap).unsqueeze(0).unsqueeze(0)
-            weight = torch.tensor(weight).unsqueeze(0).unsqueeze(0)
-            ofmap = F.pad(F.conv2d(ifmap, weight), (1,1,1,1)).squeeze().numpy()
-            ofmaps.append(ofmap)
-        return ofmaps
-    
-    
-    ofmaps = precompute_ofmaps(ifmaps, weights)      
-
-    @instance
-    def validate_input():
-        while True:
-            if enable:
-                if current_state.val == states.LOAD:
-                    input_counter.next = 0
-                elif current_state.val == states.IDLE or current_state.val == states.COMPUTE:
-                    if input_counter.val < ifmaps[current_fmap_index.val].flatten().shape[0]:
-                        if ifmap_in.val != ifmaps[current_fmap_index.val].flatten()[input_counter.val]:
-                            raise Exception("Invalid ifmap input recieved... aborting...")
-                        input_counter.next = input_counter.val + 1
-            
-            yield clk.posedge
-    
-    @instance
-    def compute_output():
-        nonlocal current_state
-        current_fmap_index.next = 0
-        while True:
-            if enable:
-                if current_state.val == states.LOAD:
-                    memory.fake_access(9)
-                    for _ in range(9):
-                        yield clk.posedge
-                    current_state.next = states.IDLE
-                    yield clk.posedge
-                    
-                elif current_state.val == states.IDLE:
-                    for _ in range(224):
-                        yield clk.posedge
-                    current_state.next = states.COMPUTE
-                    output_counter.next = 0
-                    yield clk.posedge
-                        
-                elif current_state.val == states.COMPUTE:
-                    ofmap_out.next = ofmaps[current_fmap_index].flatten()[output_counter.val].item()
-                    output_counter.next = output_counter.val + 1
-                    if output_counter.val == ((224*224)-1):
-                        yield clk.posedge # clock out last output
-                        current_state.next = states.LOAD
-                        current_fmap_index.next = current_fmap_index.val + 1
-                        output_counter.next = 0
-                    yield clk.posedge
-            else:
-                yield clk.posedge
-            
-            
-    return compute_output, validate_input
-
-
-@block
-def pe_tb():
+def q1_processor_tb():
 
     clk = Signal(True)
     enable = Signal(0)
     stop_sim = Signal(0)
-    ifmap_in = Signal(0)
-    ofmap_out = Signal(0)
     
-    memory = Memory(2, 2, 200)
-
-    ifmaps, l0, l1, weights_0, weights_1 = get_network_maps()
-    pe_ifmaps = [ifmaps[0], ifmaps[1], ifmaps[2]]
-    pe_weights = [weights_0[0][0], weights_0[0][1], weights_0[0][2]]
-    dut = pe(clk, memory, enable, pe_ifmaps, pe_weights, ifmap_in, ofmap_out)
-
+    mm2s_done = Signal(0)
+    s2mm_done = Signal(0)
+    q1 = q1_processor(clk, enable, stop_sim, mm2s_done, s2mm_done)
+    
     @instance
     def clk_driver():
         while True:
@@ -117,28 +93,43 @@ def pe_tb():
 
     @instance
     def stimulus():
-        yield clk.posedge
-        ifmap_in.next = -1
         enable.next = True
         stop_sim.next = False
         yield clk.posedge
-        for ifmap in pe_ifmaps:
-            for _ in range(9):
-                yield clk.posedge
-            for val in ifmap.flatten():
-                ifmap_in.next = val.item()
-                yield clk.posedge
-            yield clk.posedge # clk out last input
-            for _ in range(226): # 2 cycle 
-                yield clk.posedge
-        enable.next = False
+        yield join(mm2s_done, s2mm_done)
         stop_sim.next = True
+        yield clk.posedge
 
-    return clk_driver, stimulus, dut
+    # @instance
+    # def monitor():
+    #     while True:
+    #         if enable:
+    #             pass
+
+    # @instance
+    # def stimulus():
+    #     yield clk.posedge
+    #     ifmap_in.next = -1
+    #     enable.next = True
+    #     stop_sim.next = False
+    #     yield clk.posedge
+    #     for ifmap in pe_ifmaps:
+    #         for _ in range(9):
+    #             yield clk.posedge
+    #         for val in ifmap.flatten():
+    #             ifmap_in.next = val.item()
+    #             yield clk.posedge
+    #         yield clk.posedge # clk out last input
+    #         for _ in range(226): # 2 cycle 
+    #             yield clk.posedge
+    #     enable.next = False
+    #     stop_sim.next = True
+
+    return clk_driver, q1, stimulus
 
 
 if __name__ == '__main__':
     print("Running PE testbench")
-    inst = pe_tb()
+    inst = q1_processor_tb()
     inst = traceSignals(inst)
     inst.run_sim()

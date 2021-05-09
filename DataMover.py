@@ -5,7 +5,7 @@ from itertools import product
 
 
 @block
-def datamover(identifier, clk, enable, data, port, program, done, output_enable=None, cycle_program=False, repeat=1, mode='read'):
+def datamover(identifier, clk, enable, data, port, program, done = None, output_enable=None, cycle_program=False, repeat=1, mode='read'):
 
     program = cycle(program) if cycle_program else program * repeat
 
@@ -52,7 +52,8 @@ def datamover(identifier, clk, enable, data, port, program, done, output_enable=
                             output_enable.next = instr_out_enable if (instr_out_enable is not None) else True
                         yield clk.posedge
                 break
-        done.next = True
+        if done is not None:
+            done.next = True
         yield clk.posedge
 
     return compute

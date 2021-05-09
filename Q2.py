@@ -32,7 +32,7 @@ memory = Memory(1, 1, 200, initialization_vals=all_ifmaps.tolist())
 buffer = Memory(3, 2, 6, size=total_ifmaps_size+single_ofmap_size)
 
 @block 
-def q2_processor(clk, enable, mm2s_done, s2buffer_done, buffer2pe_done, s2mm_done):
+def q2_processor(clk, enable, done):
     
     mm2s_data = Signal(0)
     ifmap_in = Signal(0)
@@ -51,7 +51,7 @@ def q2_processor(clk, enable, mm2s_done, s2buffer_done, buffer2pe_done, s2mm_don
         (range(9), lambda i: 0, lambda i: False),
         (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
         (range(227), lambda i: 0, lambda i: False)
-    ], mm2s_done, mode = 'read')
+    ], mode = 'read')
 
     s2buffer = datamover("s2buffer", clk, enable, mm2s_data, buffer.get_write_port(), [
         (range(1), lambda i: 0, lambda i: False),
@@ -64,7 +64,7 @@ def q2_processor(clk, enable, mm2s_done, s2buffer_done, buffer2pe_done, s2mm_don
         (range(9), lambda i: 0, lambda i: False),
         (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
         (range(227), lambda i: 0, lambda i: False)
-    ], s2buffer_done, mode = 'write')
+    ], mode = 'write')
 
     buffer2pe = datamover("buffer2pe", clk, enable, ifmap_in, buffer.get_read_port(), [
         (range(2), lambda i: 0, lambda i: False, False),
@@ -87,9 +87,22 @@ def q2_processor(clk, enable, mm2s_done, s2buffer_done, buffer2pe_done, s2mm_don
         (range(9), lambda i: 0, lambda i: False),
         (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
         (range(227), lambda i: 0, lambda i: False)
-    ], buffer2pe_done, output_enable = pe_enable, mode = 'read')
+    ], output_enable = pe_enable, mode = 'read')
     
     agg_loader = datamover("agg_loader", clk, enable, psums, buffer.get_read_port(), [
+        (range(3), lambda i: 0, lambda i: False), # agg delay
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
         (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
@@ -101,10 +114,10 @@ def q2_processor(clk, enable, mm2s_done, s2buffer_done, buffer2pe_done, s2mm_don
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
         (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True)
-    ], s2mm_done, mode = 'read')
+    ], mode = 'read')
     
-    s2mm = datamover("s2mm", clk, enable, agg_output, buffer.get_write_port(), [
-        (range(1), lambda i: 0, lambda i: False), # agg delay
+    agg_writeback = datamover("agg_writeback", clk, enable, agg_output, buffer.get_write_port(), [
+        (range(4), lambda i: 0, lambda i: False), # agg delay
         (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
@@ -113,17 +126,37 @@ def q2_processor(clk, enable, mm2s_done, s2buffer_done, buffer2pe_done, s2mm_don
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
         (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(1), lambda i: 0, lambda i: False),
+        (range(9), lambda i: 0, lambda i: False),
+        (range(224+2), lambda i: 0, lambda i: False),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        # (range(1), lambda i: 0, lambda i: False),
+        # (range(9), lambda i: 0, lambda i: False),
+        # (range(224+2), lambda i: 0, lambda i: False),
+        # (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True)
+    ], mode = 'write')
+
+    s2mm = datamover("s2mm", clk, enable, agg_output, memory.get_write_port(), [
+        (range(252064), lambda i: 0, lambda i: False), # agg delay
         (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
         (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True)
-    ], s2mm_done, mode = 'write')
+    ], done = done, mode = 'write')
 
     agg_0 = agg(clk, enable, psums, ofmap_out, agg_output)
     
     conv_3_3 = pe(clk, memory, pe_enable, pe_ifmaps, pe_weights, ifmap_in, ofmap_out)
     
-    return mm2s, s2buffer, buffer2pe, conv_3_3
+    return mm2s, s2buffer, buffer2pe, conv_3_3, agg_0, agg_writeback, agg_loader, s2mm
 
 @block
 def q2_processor_tb():
@@ -131,11 +164,8 @@ def q2_processor_tb():
     clk = Signal(True)
     enable = Signal(0)
     stop_sim = Signal(0)
-    mm2s_done = Signal(0)
-    s2buffer_done = Signal(0)
-    buffer2pe_done = Signal(0)
     s2mm_done = Signal(0)
-    q2 = q2_processor(clk, enable, mm2s_done, s2buffer_done, buffer2pe_done, s2mm_done)
+    q2 = q2_processor(clk, enable, s2mm_done)
     
     @instance
     def clk_driver():
@@ -151,7 +181,7 @@ def q2_processor_tb():
         enable.next = True
         stop_sim.next = False
         yield clk.posedge
-        yield buffer2pe_done
+        yield s2mm_done
         stop_sim.next = True
         yield clk.posedge
 

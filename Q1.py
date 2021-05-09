@@ -18,6 +18,8 @@ from DataMover import *
 from Pe import *
 from Agg import *
 
+latency = 0
+
 ifmaps, l0, l1, weights_0, weights_1 = get_network_maps()
 pe_ifmaps = [ifmaps[0], ifmaps[1], ifmaps[2]]
 
@@ -108,37 +110,14 @@ def q1_processor_tb():
 
     @instance
     def stimulus():
+        global latency
         enable.next = True
         stop_sim.next = False
         yield clk.posedge
-        yield join(mm2s_done, s2mm_done, agg_done)
+        yield s2mm_done
         stop_sim.next = True
+        latency = now()
         yield clk.posedge
-
-    # @instance
-    # def monitor():
-    #     while True:
-    #         if enable:
-    #             pass
-
-    # @instance
-    # def stimulus():
-    #     yield clk.posedge
-    #     ifmap_in.next = -1
-    #     enable.next = True
-    #     stop_sim.next = False
-    #     yield clk.posedge
-    #     for ifmap in pe_ifmaps:
-    #         for _ in range(9):
-    #             yield clk.posedge
-    #         for val in ifmap.flatten():
-    #             ifmap_in.next = val.item()
-    #             yield clk.posedge
-    #         yield clk.posedge # clk out last input
-    #         for _ in range(226): # 2 cycle 
-    #             yield clk.posedge
-    #     enable.next = False
-    #     stop_sim.next = True
 
     return clk_driver, q1, stimulus
 
@@ -148,4 +127,7 @@ if __name__ == '__main__':
     inst = q1_processor_tb()
     inst = traceSignals(inst)
     inst.run_sim()
+    print("To process one filter")
     print("Data Transfer Energy: {}".format(memory.compute_energy_cost()))
+    print("Number of accesses: {}".format(memory.request_count))
+    print("Total Latency In Cycles: {}".format(latency/2))

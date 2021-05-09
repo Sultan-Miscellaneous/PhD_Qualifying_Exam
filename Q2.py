@@ -1,3 +1,4 @@
+
 # %%
 import numpy as np
 from numpy.core.fromnumeric import prod, repeat
@@ -17,6 +18,8 @@ from Maps import *
 from DataMover import *
 from Pe import *
 from Agg import *
+
+latency = 0
 
 ifmaps, l0, l1, weights_0, weights_1 = get_network_maps()
 pe_ifmaps = [ifmaps[0], ifmaps[1], ifmaps[2], ifmaps[0], ifmaps[1], ifmaps[2]]
@@ -178,10 +181,12 @@ def q2_processor_tb():
 
     @instance
     def stimulus():
+        global latency
         enable.next = True
         stop_sim.next = False
         yield clk.posedge
         yield s2mm_done
+        latency = now()
         stop_sim.next = True
         yield clk.posedge
 
@@ -193,4 +198,10 @@ if __name__ == '__main__':
     inst = q2_processor_tb()
     inst = traceSignals(inst, directory="vcd")
     inst.run_sim()
-    print("Data Transfer Energy: {}".format(memory.compute_energy_cost()+buffer.compute_energy_cost()))
+    print("For two filters")
+    print("DRAM Transfer Energy: {}".format(buffer.compute_energy_cost()))
+    print("Buffer Transfer Energy: {}".format(memory.compute_energy_cost()))
+    print("Total Data Transfer Energy: {}".format(memory.compute_energy_cost()+buffer.compute_energy_cost()))
+    print("Number of memory accesses: {}".format(memory.request_count))
+    print("Number of buffer accesses: {}".format(buffer.request_count))
+    print("Total Latency In Cycles: {}".format(latency/2))

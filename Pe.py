@@ -42,6 +42,7 @@ def pe(clk, memory, enable, ifmaps, weights, ifmap_in, ofmap_out):
 
     @instance
     def validate_input():
+        nonlocal memory
         while True:
             if enable:
                 if current_state.val == states.LOAD:

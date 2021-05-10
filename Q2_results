@@ -28,7 +28,7 @@ Read ifmap = 224*224*3 Origin (Memory)
 Read psums = 224*224*2 Origin (Buffer)
 Read Weights = 9*3 Origin (Memory)
 Write psums = 224*224*2 Origin (Buffer)
-write ofmap = 224*224 Origin (Memory)
+write ofmap = 224*224 Origin (Memory) # could reverse ofmap processing in second layer to keep last filter output from first layer in buffer (That would save 194*224*224*2 ~ 18.566 MegaMACS)
 
 Total read buffer = 100352
 Total Write buffer = 100352 # last one written back

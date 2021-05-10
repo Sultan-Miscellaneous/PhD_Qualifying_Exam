@@ -1,8 +1,61 @@
-Running Q2 testbench
-For two filters
-DRAM Transfer Energy: 3311616
-Buffer Transfer Energy: 70259000
-Total Data Transfer Energy: 73570616
-Number of memory accesses: 351295
-Number of buffer accesses: 551936
-Total Latency In Cycles: 302475.0
+Running PE testbench
+DRAM Transfer Energy: 40148000
+Buffer Transfer Energy: 1204224
+Total Data Transfer Energy: 41352224
+Number of read memory accesses: 150564
+Number of write memory accesses: 50176
+Number of read buffer accesses: 100352
+Number of write buffer accesses: 100352
+Total Latency In Cycles: 151239.0
+
+Expected for each ifmap
+start: 1
+agg delay: 1
+final psum writeback from buffer delay: 1
+repeated for each ofmap: Load Weights 9 cycles
+repeated for each ofmap: Pipeline Delay 451 cycles 
+repeated for each ofmap: Output 222*224
+repeated for each ofmap: Pad 224
+Expected = 3+3*(50412) = 151239
+Total latency for network
+Layer1 filter latency = 3*50412*4 = 604994
+Layer2 filter latency = 4*50412*2 = 403296
+Startup = 3
+Total Latency = 1008293
+
+Expected Accesses For Single filter
+Read ifmap = 224*224*3 Origin (Memory)
+Read psums = 224*224*2 Origin (Buffer)
+Read Weights = 9*3 Origin (Memory)
+Write psums = 224*224*2 Origin (Buffer)
+write ofmap = 224*224 Origin (Memory)
+
+Total read buffer = 100352
+Total Write buffer = 100352 # last one written back
+Total read memory = 150528
+Total Write memory = 50176
+Total Energy Buffer = 100352*2*6 = 1204224
+Total Energy Memory = (150528+50176 + 9*3)*200 = 40146200 #mismatch of 1800 because of sim adding an extra load
+Total Energy = 41350424
+
+Estimated Access for Layer2 filter
+Read ifmap = 224*224*4 Origin (Memory)
+Read psums = 224*224*3 Origin (Buffer)
+Read Weights = 9*4 Origin (Memory)
+Write psums = 224*224*3 Origin (Buffer)
+Write psums = 224*224 Origin (Memory)
+
+Total read buffer = 150528
+Total Write buffer = 150528 # last one written back
+Total read memory = 200704
+Total Write memory = 50176
+Total Energy Buffer = 150528*2*6 = 1806336
+Total Energy Memory = (200704+50176 + 9*4)*200 = 50183200
+Total Energy = 51989536
+
+Energy for datamovement = 41350424*4 + 51989536*2 = 269380768 ~ 256.902 MegaMACS
+Energy for MACS = 11*(224*224) = 551936 ~ 0.526 MegaMacs
+Energy for AGG = 1*(224*224) = 50176 ~ 0.048 MegaMacs
+Total Energy = 257.476 MegaMacs
+
+Energy Reduction ~ (542.511-257.476)/542.511 = 0.53

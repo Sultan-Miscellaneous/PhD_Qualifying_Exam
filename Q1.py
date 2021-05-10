@@ -55,7 +55,7 @@ def q1_processor(clk, enable, mm2s_done, s2mm_done, agg_done):
     agg_loader = datamover("agg_loader", clk, enable, psums, memory.get_read_port(), [
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
-        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
+        (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: False),
         (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
@@ -129,5 +129,6 @@ if __name__ == '__main__':
     inst.run_sim()
     print("To process one filter")
     print("Data Transfer Energy: {}".format(memory.compute_energy_cost()))
-    print("Number of accesses: {}".format(memory.request_count))
+    print("Number of read accesses: {}".format(memory.read_request_count))
+    print("Number of write accesses: {}".format(memory.write_request_count))
     print("Total Latency In Cycles: {}".format(latency/2))

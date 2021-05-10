@@ -1,5 +1,43 @@
 Running Q1 testbench
 To process one filter
-Data Transfer Energy: 90324000
-Number of accesses: 451620
+Data Transfer Energy: 80288800
+Number of read accesses: 250916 #glitch on sim termination extra fake weight load happened
+Number of write accesses: 150528
 Total Latency In Cycles: 151238.0
+
+Expected for each ifmap
+start: 1
+agg delay: 1
+repeated for each ofmap: Load Weights 9 cycles
+repeated for each ofmap: Pipeline Delay 451 cycles 
+repeated for each ofmap: Output 222*224
+repeated for each ofmap: Pad 224
+Expected = 2+3*(50412) = 151238
+Total latency for network
+Layer1 filter latency = 3*50412*4 = 604994
+Layer2 filter latency = 4*50412*2 = 403296
+Startup = 2
+Total Latency = 1008292
+
+Expected Accesses For Single filter
+Read ifmap = 224*224*3
+Read psums = 224*224*2
+Read Weights = 9*3 
+Write psums = 224*224*3
+Total read = 250907
+Total Write = 150528
+Total Energy = 80287000
+
+Estimated Access for Layer2 filter
+Read ifmap = 224*224*4
+Read psums = 224*224*3
+Read Weights = 9*4 
+Write psums = 224*224*4
+Total read = 351268
+Total Write = 200704
+Total Energy = 110394400
+
+Energy for datamovement = 80287000*4 + 110394400*2 = 541936800 ~ 541.9368 MegaMACS
+Energy for MACS = 11*(224*224) = 551936 ~ 0.526 MegaMacs
+Energy for AGG = 1*(224*224) = 50176 ~ 0.048 MegaMacs
+Total Energy = 542.511 MegaMACS

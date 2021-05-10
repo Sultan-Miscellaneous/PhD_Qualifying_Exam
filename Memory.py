@@ -10,7 +10,8 @@ class Memory:
         self.available_read_ports = read_port_count
         self.available_write_ports = write_port_count
         self.access_cost = access_cost
-        self.request_count = 0
+        self.read_request_count = 0
+        self.write_request_count = 0
         if initialization_vals is not None:
             self.initialize(initialization_vals)
         
@@ -33,18 +34,18 @@ class Memory:
             raise Exception("Too many read ports requested... aborting...")
 
     def read(self, port_index):
-        self.request_count += 1
+        self.read_request_count += 1
         return self.storage[port_index]
 
     def write(self, addr, data):
         self.storage[addr] = data
-        self.request_count += 1
+        self.write_request_count += 1
     
     def compute_energy_cost(self):
-        return self.request_count*self.access_cost
+        return (self.read_request_count+self.write_request_count)*self.access_cost
     
     def fake_access(self, count):
-        self.request_count += count
+        self.read_request_count += count
 
 
 @block

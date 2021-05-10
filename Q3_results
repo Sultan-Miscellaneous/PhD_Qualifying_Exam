@@ -1,0 +1,8 @@
+Running PE testbench
+For two filters
+DRAM Transfer Energy: 6021120
+Buffer Transfer Energy: 40153400
+Total Data Transfer Energy: 46174520
+Number of memory accesses: 200767
+Number of buffer accesses: 1003520
+Total Latency In Cycles: 302477.0

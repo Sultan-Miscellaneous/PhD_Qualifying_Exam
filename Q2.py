@@ -32,7 +32,7 @@ total_ofmaps_size = total_ifmaps_size
 pe_weights = [weights_0[0][0], weights_0[0][1], weights_0[0][2], weights_0[1][0], weights_0[1][1], weights_0[1][2]]
 
 memory = Memory(1, 1, 200, initialization_vals=all_ifmaps.tolist())
-buffer = Memory(3, 2, 6, size=total_ifmaps_size+single_ofmap_size)
+buffer = Memory(1, 2, 6, size=total_ifmaps_size+single_ofmap_size)
 
 @block 
 def q2_processor(clk, enable, done):
@@ -44,33 +44,32 @@ def q2_processor(clk, enable, done):
     agg_output = Signal(0)
     pe_enable = Signal(0)
     
-    mm2s = datamover("mm2s", clk, enable, mm2s_data, memory.get_read_port(), [
-        (range(9), lambda i: 0, lambda i: False),
-        (range(single_ifmap_size), lambda i: i, lambda i: True),
-        (range(227), lambda i: 0, lambda i: False),
-        (range(9), lambda i: 0, lambda i: False),
-        (range(single_ifmap_size), lambda i: i+single_ifmap_size, lambda i: True),
-        (range(227), lambda i: 0, lambda i: False),
-        (range(9), lambda i: 0, lambda i: False),
-        (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
-        (range(227), lambda i: 0, lambda i: False)
-    ], mode = 'read')
+    # mm2s = datamover("mm2s", clk, enable, mm2s_data, memory.get_read_port(), [
+    #     (range(9), lambda i: 0, lambda i: False),
+    #     (range(single_ifmap_size), lambda i: i, lambda i: True),
+    #     (range(227), lambda i: 0, lambda i: False),
+    #     (range(9), lambda i: 0, lambda i: False),
+    #     (range(single_ifmap_size), lambda i: i+single_ifmap_size, lambda i: True),
+    #     (range(227), lambda i: 0, lambda i: False),
+    #     (range(9), lambda i: 0, lambda i: False),
+    #     (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
+    #     (range(227), lambda i: 0, lambda i: False)
+    # ], mode = 'read')
 
-    s2buffer = datamover("s2buffer", clk, enable, mm2s_data, buffer.get_write_port(), [
-        (range(1), lambda i: 0, lambda i: False),
-        (range(9), lambda i: 0, lambda i: False),
-        (range(single_ifmap_size), lambda i: i, lambda i: True),
-        (range(227), lambda i: 0, lambda i: False),
-        (range(9), lambda i: 0, lambda i: False),
-        (range(single_ifmap_size), lambda i: i+single_ifmap_size, lambda i: True),
-        (range(227), lambda i: 0, lambda i: False),
-        (range(9), lambda i: 0, lambda i: False),
-        (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
-        (range(227), lambda i: 0, lambda i: False)
-    ], mode = 'write')
+    # s2buffer = datamover("s2buffer", clk, enable, mm2s_data, buffer.get_write_port(), [
+    #     (range(1), lambda i: 0, lambda i: False),
+    #     (range(9), lambda i: 0, lambda i: False),
+    #     (range(single_ifmap_size), lambda i: i, lambda i: True),
+    #     (range(227), lambda i: 0, lambda i: False),
+    #     (range(9), lambda i: 0, lambda i: False),
+    #     (range(single_ifmap_size), lambda i: i+single_ifmap_size, lambda i: True),
+    #     (range(227), lambda i: 0, lambda i: False),
+    #     (range(9), lambda i: 0, lambda i: False),
+    #     (range(single_ifmap_size), lambda i: i+single_ifmap_size*2, lambda i: True),
+    #     (range(227), lambda i: 0, lambda i: False)
+    # ], mode = 'write')
 
-    buffer2pe = datamover("buffer2pe", clk, enable, ifmap_in, buffer.get_read_port(), [
-        (range(2), lambda i: 0, lambda i: False, False),
+    buffer2pe = datamover("buffer2pe", clk, enable, ifmap_in, memory.get_read_port(), [
         (range(1), lambda i: 0, lambda i: False, True),
         (range(9), lambda i: 0, lambda i: False),
         (range(single_ifmap_size), lambda i: i, lambda i: True),
@@ -93,7 +92,7 @@ def q2_processor(clk, enable, done):
     ], output_enable = pe_enable, mode = 'read')
     
     agg_loader = datamover("agg_loader", clk, enable, psums, buffer.get_read_port(), [
-        (range(3), lambda i: 0, lambda i: False), # agg delay
+        (range(1), lambda i: 0, lambda i: False), # agg delay
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
         (range(single_ofmap_size), lambda i: i+total_ifmaps_size, lambda i: True),
@@ -120,7 +119,7 @@ def q2_processor(clk, enable, done):
     ], mode = 'read')
     
     agg_writeback = datamover("agg_writeback", clk, enable, agg_output, buffer.get_write_port(), [
-        (range(4), lambda i: 0, lambda i: False), # agg delay
+        (range(2), lambda i: 0, lambda i: False), # agg delay
         (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
@@ -148,7 +147,7 @@ def q2_processor(clk, enable, done):
     ], mode = 'write')
 
     s2mm = datamover("s2mm", clk, enable, agg_output, memory.get_write_port(), [
-        (range(252064), lambda i: 0, lambda i: False), # agg delay
+        (range(252062), lambda i: 0, lambda i: False), # agg delay
         (range(1), lambda i: 0, lambda i: False),
         (range(9), lambda i: 0, lambda i: False),
         (range(224+2), lambda i: 0, lambda i: False),
@@ -159,7 +158,7 @@ def q2_processor(clk, enable, done):
     
     conv_3_3 = pe(clk, memory, pe_enable, pe_ifmaps, pe_weights, ifmap_in, ofmap_out)
     
-    return mm2s, s2buffer, buffer2pe, conv_3_3, agg_0, agg_writeback, agg_loader, s2mm
+    return buffer2pe, conv_3_3, agg_0, agg_writeback, agg_loader, s2mm
 
 @block
 def q2_processor_tb():

@@ -1,0 +1,20 @@
+Assuming compute is clocked at half so latency is measured in dram clk
+
+load all weights via dram over two ports: (3*4*9 + 4*2*9)/2
+Start = 2 # to allow input to buffer
+(Below is clocked at half speed)
+pipeline delay (226 cycles until first padded output)
+2 AGGs
+pipeline delay (226 cycles until first padded output)
+2 AGGs
+ofmap out 224x224
+Total Latency = 
+2 + (3*4*9 + 4*2*9)/2 + 2*(226+2+226+2+224*224)
+
+Ignoring buffer since it only holds at most 3 elements at a time
+Dram read [ifmap]= 224*224*3 
+Dram read [weights] = (3*4*9 + 4*2*9)
+Dram write [ofmaps] = 224*224*2
+
+PE energy = latency*11
+AGG energy = latency

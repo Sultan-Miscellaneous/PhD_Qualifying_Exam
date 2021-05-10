@@ -1,3 +1,4 @@
+Expected for every <=2 filters
 Transfer Delay = 224*224*2 (Happens once)
 repeated for each ofmap: Load Weights 9*8/2
 repeated for each ofmap: Pipeline Delay 451 cycles 
